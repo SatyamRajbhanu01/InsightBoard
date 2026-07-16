@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { api, RowsResponse } from '../lib/api';
-import { ErrorBanner, Spinner } from './ui';
+import { fmtNum } from '../lib/format';
+import { EmptyState, ErrorState, Icon, Spinner } from './ui';
+
+const isNumericLike = (v: unknown) => typeof v === 'number' || (typeof v === 'string' && v !== '' && !isNaN(Number(v)));
 
 export default function DataTable({ id, columns }: { id: string; columns: string[] }) {
   const [page, setPage] = useState(1);
@@ -12,9 +15,9 @@ export default function DataTable({ id, columns }: { id: string; columns: string
   const [debounced, setDebounced] = useState('');
   const [data, setData] = useState<RowsResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr] = useState<unknown>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  // debounce filter typing
   useEffect(() => {
     const t = setTimeout(() => {
       setDebounced(filterValue);
@@ -37,12 +40,12 @@ export default function DataTable({ id, columns }: { id: string; columns: string
         filter_value: debounced || undefined,
       })
       .then((d) => alive && setData(d))
-      .catch((e) => alive && setErr(e.message))
+      .catch((e) => alive && setErr(e))
       .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
     };
-  }, [id, page, pageSize, sortBy, sortDir, filterCol, debounced]);
+  }, [id, page, pageSize, sortBy, sortDir, filterCol, debounced, reloadKey]);
 
   const toggleSort = (col: string) => {
     if (sortBy === col) {
@@ -54,48 +57,61 @@ export default function DataTable({ id, columns }: { id: string; columns: string
     setPage(1);
   };
 
+  const from = data && data.total > 0 ? (data.page - 1) * data.page_size + 1 : 0;
+  const to = data ? Math.min(data.page * data.page_size, data.total) : 0;
+
   return (
     <div className="card overflow-hidden">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4">
-        <div className="flex items-center gap-2">
-          <select
-            value={filterCol}
-            onChange={(e) => setFilterCol(e.target.value)}
-            className="rounded-lg border border-white/10 bg-ink-900/70 px-2 py-1.5 text-sm text-slate-100 focus:border-brand-400 focus:outline-none"
-            aria-label="Filter column"
-          >
-            {columns.map((c) => (
-              <option key={c} value={c} className="bg-ink-900">
-                {c}
-              </option>
-            ))}
-          </select>
+      <div className="flex flex-wrap items-center gap-3 border-b border-line p-4">
+        <div className="relative">
+          <Icon name="search" className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle" />
           <input
             value={filterValue}
             onChange={(e) => setFilterValue(e.target.value)}
             placeholder="Filter rows…"
-            className="w-48 rounded-lg border border-white/10 bg-ink-900/70 px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-brand-400 focus:outline-none"
+            className="input w-52 pl-8"
             aria-label="Filter value"
           />
           {filterValue && (
-            <button className="text-xs text-slate-400 hover:text-white" onClick={() => setFilterValue('')}>
-              clear
+            <button
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-subtle hover:text-fg"
+              onClick={() => setFilterValue('')}
+              aria-label="Clear filter"
+            >
+              <Icon name="x" className="h-4 w-4" />
             </button>
           )}
         </div>
-        <div className="ml-auto flex items-center gap-2 text-xs text-slate-400">
-          <span>Rows/page</span>
+        <label className="flex items-center gap-2 text-xs font-medium text-muted">
+          in
+          <select
+            value={filterCol}
+            onChange={(e) => setFilterCol(e.target.value)}
+            className="input py-1.5"
+            aria-label="Filter column"
+          >
+            {columns.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="ml-auto flex items-center gap-2 text-xs font-medium text-muted">
+          <span>Rows per page</span>
           <select
             value={pageSize}
             onChange={(e) => {
               setPageSize(Number(e.target.value));
               setPage(1);
             }}
-            className="rounded-lg border border-white/10 bg-ink-900/70 px-2 py-1 text-slate-100 focus:border-brand-400 focus:outline-none"
+            className="input py-1.5"
+            aria-label="Rows per page"
           >
             {[10, 25, 50, 100].map((n) => (
-              <option key={n} value={n} className="bg-ink-900">
+              <option key={n} value={n}>
                 {n}
               </option>
             ))}
@@ -104,83 +120,109 @@ export default function DataTable({ id, columns }: { id: string; columns: string
       </div>
 
       {/* Table */}
-      <div className="relative max-h-[520px] overflow-auto">
-        {err && (
+      <div className="relative max-h-[560px] overflow-auto">
+        {err ? (
           <div className="p-4">
-            <ErrorBanner message={err} />
+            <ErrorState error={err} onRetry={() => setReloadKey((k) => k + 1)} />
           </div>
-        )}
-        {!err && (
+        ) : (
           <table className="w-full border-collapse text-sm">
-            <thead className="sticky top-0 z-10 bg-ink-900/90 backdrop-blur">
+            <thead className="sticky top-0 z-10 bg-surface/95 backdrop-blur">
               <tr>
-                {columns.map((c) => (
-                  <th
-                    key={c}
-                    onClick={() => toggleSort(c)}
-                    className="cursor-pointer select-none whitespace-nowrap border-b border-white/10 px-3 py-2.5 text-left font-semibold text-slate-300 hover:text-white"
-                  >
-                    <span className="inline-flex items-center gap-1">
-                      {c}
-                      {sortBy === c && <span className="text-brand-300">{sortDir === 'asc' ? '▲' : '▼'}</span>}
-                    </span>
-                  </th>
-                ))}
+                {columns.map((c) => {
+                  const active = sortBy === c;
+                  return (
+                    <th
+                      key={c}
+                      onClick={() => toggleSort(c)}
+                      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggleSort(c))}
+                      tabIndex={0}
+                      role="columnheader"
+                      aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+                      className="focus-ring cursor-pointer select-none whitespace-nowrap border-b border-line px-3 py-2.5 text-left font-semibold text-muted transition-colors hover:text-fg"
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        {c}
+                        <span className={`text-brand-400 transition-opacity ${active ? 'opacity-100' : 'opacity-0'}`}>
+                          {sortDir === 'asc' ? '▲' : '▼'}
+                        </span>
+                      </span>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
               {data?.rows.map((row, i) => (
-                <tr key={i} className="odd:bg-white/[0.02] hover:bg-brand-500/5">
-                  {columns.map((c) => (
-                    <td key={c} className="whitespace-nowrap px-3 py-2 text-slate-300">
-                      {row[c] === null || row[c] === undefined ? (
-                        <span className="text-slate-600 italic">null</span>
-                      ) : (
-                        String(row[c])
-                      )}
-                    </td>
-                  ))}
+                <tr key={i} className="border-b border-line/60 transition-colors hover:bg-brand-500/[0.06]">
+                  {columns.map((c) => {
+                    const val = row[c];
+                    const empty = val === null || val === undefined || val === '';
+                    return (
+                      <td
+                        key={c}
+                        className={`whitespace-nowrap px-3 py-2 ${
+                          isNumericLike(val) ? 'num text-right text-fg' : 'text-muted'
+                        }`}
+                      >
+                        {empty ? <span className="italic text-subtle">null</span> : String(val)}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
           </table>
         )}
+
         {loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-ink-900/40">
+          <div className="absolute inset-0 flex items-center justify-center bg-canvas/50 backdrop-blur-[1px]">
             <Spinner label="Loading rows…" />
           </div>
         )}
         {!loading && !err && data && data.rows.length === 0 && (
-          <div className="p-10 text-center text-sm text-slate-500">No rows match your filter.</div>
+          <div className="p-6">
+            <EmptyState
+              title="No rows match your filter"
+              hint={debounced ? `Nothing in “${filterCol}” contains “${debounced}”.` : undefined}
+              icon="search"
+            />
+          </div>
         )}
       </div>
 
       {/* Pagination */}
-      {data && (
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 p-4 text-sm text-slate-400">
+      {data && data.total > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line p-4 text-sm text-muted">
           <span>
-            {data.total.toLocaleString()} rows · page {data.page} of {data.total_pages}
+            Showing <span className="num font-semibold text-fg">{fmtNum(from)}</span>–
+            <span className="num font-semibold text-fg">{fmtNum(to)}</span> of{' '}
+            <span className="num font-semibold text-fg">{fmtNum(data.total)}</span>
           </span>
-          <div className="flex items-center gap-2">
-            <button className="btn-ghost px-3 py-1.5" disabled={page <= 1} onClick={() => setPage(1)}>
-              « First
+          <div className="flex items-center gap-1.5">
+            <button className="btn-ghost px-2.5 py-1.5" disabled={page <= 1} onClick={() => setPage(1)} aria-label="First page">
+              «
             </button>
-            <button className="btn-ghost px-3 py-1.5" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+            <button className="btn-ghost px-2.5 py-1.5" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
               ‹ Prev
             </button>
+            <span className="num px-2 text-xs text-subtle">
+              Page {data.page} / {data.total_pages}
+            </span>
             <button
-              className="btn-ghost px-3 py-1.5"
+              className="btn-ghost px-2.5 py-1.5"
               disabled={page >= data.total_pages}
               onClick={() => setPage((p) => p + 1)}
             >
               Next ›
             </button>
             <button
-              className="btn-ghost px-3 py-1.5"
+              className="btn-ghost px-2.5 py-1.5"
               disabled={page >= data.total_pages}
               onClick={() => setPage(data.total_pages)}
+              aria-label="Last page"
             >
-              Last »
+              »
             </button>
           </div>
         </div>

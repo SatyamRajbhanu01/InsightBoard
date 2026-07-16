@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Bar,
   BarChart,
+  Cell,
   CartesianGrid,
   ResponsiveContainer,
   Scatter,
@@ -12,24 +13,27 @@ import {
   ZAxis,
 } from 'recharts';
 import { api, BarData, ColumnProfile, Correlation, HistogramData, ScatterData } from '../lib/api';
-import { ErrorBanner, EmptyState, Select, Spinner } from './ui';
-
-const AXIS = { stroke: '#64748b', fontSize: 11 };
-const GRID = '#1f294a';
+import { useTheme } from '../lib/theme';
+import { chartTheme, corrColor, seriesColor, VIZ } from '../lib/viz';
+import { EmptyState, ErrorState, Icon, Select, Skeleton } from './ui';
 
 function ChartCard({
   title,
+  icon,
   controls,
   children,
 }: {
   title: string;
+  icon: string;
   controls?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <div className="card p-5">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <h3 className="text-sm font-bold uppercase tracking-wide text-slate-300">{title}</h3>
+        <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-muted">
+          <Icon name={icon} className="h-4 w-4 text-brand-300" /> {title}
+        </h3>
         <div className="flex flex-wrap items-end gap-3">{controls}</div>
       </div>
       {children}
@@ -37,22 +41,39 @@ function ChartCard({
   );
 }
 
-const tooltipStyle = {
-  background: '#0b1020',
-  border: '1px solid #26315a',
-  borderRadius: 12,
-  color: '#e8ecf6',
-  fontSize: 12,
-};
+function ChartFrame({
+  loading,
+  error,
+  onRetry,
+  hasData,
+  children,
+}: {
+  loading: boolean;
+  error: unknown;
+  onRetry: () => void;
+  hasData: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="h-64">
+      {loading && <Skeleton className="h-full w-full" />}
+      {!loading && !!error && <ErrorState error={error} onRetry={onRetry} />}
+      {!loading && !error && !hasData && <EmptyState title="No data to plot" icon="chart" />}
+      {!loading && !error && hasData && children}
+    </div>
+  );
+}
 
 /* -------------------- Histogram -------------------- */
 function HistogramChart({ id, numericCols }: { id: string; numericCols: string[] }) {
+  const { theme } = useTheme();
+  const ct = chartTheme(theme);
   const [col, setCol] = useState(numericCols[0] ?? '');
   const [data, setData] = useState<HistogramData | null>(null);
   const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr] = useState<unknown>(null);
 
-  useEffect(() => {
+  const load = () => {
     if (!col) return;
     let alive = true;
     setLoading(true);
@@ -60,52 +81,47 @@ function HistogramChart({ id, numericCols }: { id: string; numericCols: string[]
     api
       .histogram(id, col)
       .then((d) => alive && setData(d))
-      .catch((e) => alive && setErr(e.message))
+      .catch((e) => alive && setErr(e))
       .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
     };
-  }, [id, col]);
+  };
+  useEffect(load, [id, col]);
 
   return (
     <ChartCard
       title="Distribution"
+      icon="chart"
       controls={
-        <Select
-          label="Column"
-          value={col}
-          onChange={setCol}
-          options={numericCols.map((c) => ({ value: c, label: c }))}
-        />
+        <Select label="Column" value={col} onChange={setCol} options={numericCols.map((c) => ({ value: c, label: c }))} />
       }
     >
-      <div className="h-64">
-        {loading && <Spinner label="Loading…" />}
-        {err && <ErrorBanner message={err} />}
-        {!loading && !err && data && (
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data.bins} margin={{ top: 8, right: 8, bottom: 8, left: -12 }}>
-              <CartesianGrid stroke={GRID} vertical={false} />
-              <XAxis dataKey="bin" tick={AXIS} interval="preserveStartEnd" tickLine={false} />
-              <YAxis tick={AXIS} tickLine={false} axisLine={false} />
-              <Tooltip contentStyle={tooltipStyle} cursor={{ fill: '#ffffff08' }} />
-              <Bar dataKey="count" fill="#5a8cff" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        )}
-      </div>
+      <ChartFrame loading={loading} error={err} onRetry={load} hasData={!!data && data.bins.length > 0}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data?.bins} margin={{ top: 8, right: 8, bottom: 8, left: -12 }}>
+            <CartesianGrid stroke={ct.grid} vertical={false} />
+            <XAxis dataKey="bin" tick={ct.axis} interval="preserveStartEnd" tickLine={false} axisLine={{ stroke: ct.grid }} />
+            <YAxis tick={ct.axis} tickLine={false} axisLine={false} />
+            <Tooltip contentStyle={ct.tooltip} cursor={{ fill: ct.cursorFill }} />
+            <Bar dataKey="count" fill={VIZ[0]} radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </ChartFrame>
     </ChartCard>
   );
 }
 
 /* -------------------- Categorical bar -------------------- */
 function CategoryBarChart({ id, catCols }: { id: string; catCols: string[] }) {
+  const { theme } = useTheme();
+  const ct = chartTheme(theme);
   const [col, setCol] = useState(catCols[0] ?? '');
   const [data, setData] = useState<BarData | null>(null);
   const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr] = useState<unknown>(null);
 
-  useEffect(() => {
+  const load = () => {
     if (!col) return;
     let alive = true;
     setLoading(true);
@@ -113,17 +129,18 @@ function CategoryBarChart({ id, catCols }: { id: string; catCols: string[] }) {
     api
       .bar(id, col)
       .then((d) => alive && setData(d))
-      .catch((e) => alive && setErr(e.message))
+      .catch((e) => alive && setErr(e))
       .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
     };
-  }, [id, col]);
+  };
+  useEffect(load, [id, col]);
 
   if (catCols.length === 0) {
     return (
-      <ChartCard title="Top categories">
-        <EmptyState title="No categorical columns" hint="This dataset is all numeric." />
+      <ChartCard title="Top categories" icon="grid">
+        <EmptyState title="No categorical columns" hint="This dataset is entirely numeric." icon="grid" />
       </ChartCard>
     );
   }
@@ -131,54 +148,41 @@ function CategoryBarChart({ id, catCols }: { id: string; catCols: string[] }) {
   return (
     <ChartCard
       title="Top categories"
+      icon="grid"
       controls={
-        <Select
-          label="Column"
-          value={col}
-          onChange={setCol}
-          options={catCols.map((c) => ({ value: c, label: c }))}
-        />
+        <Select label="Column" value={col} onChange={setCol} options={catCols.map((c) => ({ value: c, label: c }))} />
       }
     >
-      <div className="h-64">
-        {loading && <Spinner label="Loading…" />}
-        {err && <ErrorBanner message={err} />}
-        {!loading && !err && data && (
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={data.data}
-              layout="vertical"
-              margin={{ top: 4, right: 12, bottom: 4, left: 8 }}
-            >
-              <CartesianGrid stroke={GRID} horizontal={false} />
-              <XAxis type="number" tick={AXIS} tickLine={false} axisLine={false} />
-              <YAxis
-                type="category"
-                dataKey="label"
-                tick={AXIS}
-                width={100}
-                tickLine={false}
-                axisLine={false}
-              />
-              <Tooltip contentStyle={tooltipStyle} cursor={{ fill: '#ffffff08' }} />
-              <Bar dataKey="count" fill="#8eb4ff" radius={[0, 4, 4, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        )}
-      </div>
+      <ChartFrame loading={loading} error={err} onRetry={load} hasData={!!data && data.data.length > 0}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data?.data} layout="vertical" margin={{ top: 4, right: 12, bottom: 4, left: 8 }}>
+            <CartesianGrid stroke={ct.grid} horizontal={false} />
+            <XAxis type="number" tick={ct.axis} tickLine={false} axisLine={false} />
+            <YAxis type="category" dataKey="label" tick={ct.axis} width={110} tickLine={false} axisLine={false} />
+            <Tooltip contentStyle={ct.tooltip} cursor={{ fill: ct.cursorFill }} />
+            <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+              {(data?.data ?? []).map((_, i) => (
+                <Cell key={i} fill={seriesColor(i)} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </ChartFrame>
     </ChartCard>
   );
 }
 
 /* -------------------- Scatter -------------------- */
 function ScatterPlot({ id, numericCols }: { id: string; numericCols: string[] }) {
+  const { theme } = useTheme();
+  const ct = chartTheme(theme);
   const [x, setX] = useState(numericCols[0] ?? '');
   const [y, setY] = useState(numericCols[1] ?? numericCols[0] ?? '');
   const [data, setData] = useState<ScatterData | null>(null);
   const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr] = useState<unknown>(null);
 
-  useEffect(() => {
+  const load = () => {
     if (!x || !y) return;
     let alive = true;
     setLoading(true);
@@ -186,17 +190,18 @@ function ScatterPlot({ id, numericCols }: { id: string; numericCols: string[] })
     api
       .scatter(id, x, y)
       .then((d) => alive && setData(d))
-      .catch((e) => alive && setErr(e.message))
+      .catch((e) => alive && setErr(e))
       .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
     };
-  }, [id, x, y]);
+  };
+  useEffect(load, [id, x, y]);
 
   if (numericCols.length < 2) {
     return (
-      <ChartCard title="Scatter">
-        <EmptyState title="Need two numeric columns" hint="Not enough numeric columns to plot." />
+      <ChartCard title="Scatter" icon="spark">
+        <EmptyState title="Need two numeric columns" hint="Not enough numeric columns to plot." icon="spark" />
       </ChartCard>
     );
   }
@@ -204,6 +209,7 @@ function ScatterPlot({ id, numericCols }: { id: string; numericCols: string[] })
   return (
     <ChartCard
       title="Scatter"
+      icon="spark"
       controls={
         <>
           <Select label="X axis" value={x} onChange={setX} options={numericCols.map((c) => ({ value: c, label: c }))} />
@@ -211,57 +217,41 @@ function ScatterPlot({ id, numericCols }: { id: string; numericCols: string[] })
         </>
       }
     >
-      <div className="h-64">
-        {loading && <Spinner label="Loading…" />}
-        {err && <ErrorBanner message={err} />}
-        {!loading && !err && data && (
-          <ResponsiveContainer width="100%" height="100%">
-            <ScatterChart margin={{ top: 8, right: 12, bottom: 8, left: -12 }}>
-              <CartesianGrid stroke={GRID} />
-              <XAxis type="number" dataKey="x" name={x} tick={AXIS} tickLine={false} />
-              <YAxis type="number" dataKey="y" name={y} tick={AXIS} tickLine={false} axisLine={false} />
-              <ZAxis range={[36, 36]} />
-              <Tooltip contentStyle={tooltipStyle} cursor={{ strokeDasharray: '3 3' }} />
-              <Scatter data={data.points} fill="#5a8cff" fillOpacity={0.6} />
-            </ScatterChart>
-          </ResponsiveContainer>
-        )}
-      </div>
+      <ChartFrame loading={loading} error={err} onRetry={load} hasData={!!data && data.points.length > 0}>
+        <ResponsiveContainer width="100%" height="100%">
+          <ScatterChart margin={{ top: 8, right: 12, bottom: 8, left: -12 }}>
+            <CartesianGrid stroke={ct.grid} />
+            <XAxis type="number" dataKey="x" name={x} tick={ct.axis} tickLine={false} axisLine={{ stroke: ct.grid }} />
+            <YAxis type="number" dataKey="y" name={y} tick={ct.axis} tickLine={false} axisLine={false} />
+            <ZAxis range={[40, 40]} />
+            <Tooltip contentStyle={ct.tooltip} cursor={{ strokeDasharray: '3 3' }} />
+            <Scatter data={data?.points} fill={VIZ[0]} fillOpacity={0.65} />
+          </ScatterChart>
+        </ResponsiveContainer>
+      </ChartFrame>
     </ChartCard>
   );
 }
 
 /* -------------------- Correlation heatmap -------------------- */
-function corrColor(v: number | null): string {
-  if (v === null) return 'transparent';
-  // diverging: blue (neg) -> slate (0) -> orange (pos)
-  const t = Math.max(-1, Math.min(1, v));
-  if (t >= 0) {
-    const a = 0.12 + t * 0.78;
-    return `rgba(90,140,255,${a})`;
-  }
-  const a = 0.12 + Math.abs(t) * 0.78;
-  return `rgba(244,114,95,${a})`;
-}
-
 function CorrelationHeatmap({ corr }: { corr: Correlation }) {
   const { columns, matrix } = corr;
   if (columns.length < 2) {
     return (
-      <ChartCard title="Correlation heatmap">
-        <EmptyState title="Need two numeric columns" />
+      <ChartCard title="Correlation heatmap" icon="layers">
+        <EmptyState title="Need two numeric columns" icon="layers" />
       </ChartCard>
     );
   }
   return (
-    <ChartCard title="Correlation heatmap">
+    <ChartCard title="Correlation heatmap" icon="layers">
       <div className="overflow-auto">
         <table className="border-separate border-spacing-1 text-[11px]">
           <thead>
             <tr>
-              <th className="sticky left-0 bg-ink-800/60" />
+              <th className="sticky left-0 bg-surface" />
               {columns.map((c) => (
-                <th key={c} className="max-w-[64px] truncate px-1 text-slate-400" title={c}>
+                <th key={c} className="max-w-[64px] truncate px-1 font-medium text-muted" title={c}>
                   {c}
                 </th>
               ))}
@@ -270,14 +260,20 @@ function CorrelationHeatmap({ corr }: { corr: Correlation }) {
           <tbody>
             {matrix.map((row, i) => (
               <tr key={columns[i]}>
-                <td className="sticky left-0 max-w-[90px] truncate bg-ink-800/60 pr-2 text-right text-slate-400" title={columns[i]}>
+                <td
+                  className="sticky left-0 max-w-[90px] truncate bg-surface pr-2 text-right font-medium text-muted"
+                  title={columns[i]}
+                >
                   {columns[i]}
                 </td>
                 {row.map((v, j) => (
                   <td
                     key={j}
-                    className="h-10 w-12 rounded text-center font-semibold text-slate-100"
-                    style={{ background: corrColor(v) }}
+                    className="num h-10 w-12 rounded text-center font-semibold text-fg"
+                    style={{
+                      background: corrColor(v),
+                      color: v !== null && Math.abs(v) > 0.6 ? '#fff' : undefined,
+                    }}
                     title={`${columns[i]} ↔ ${columns[j]}: ${v ?? '—'}`}
                   >
                     {v === null ? '—' : v.toFixed(2)}
@@ -288,9 +284,13 @@ function CorrelationHeatmap({ corr }: { corr: Correlation }) {
           </tbody>
         </table>
       </div>
-      <div className="mt-3 flex items-center gap-3 text-[11px] text-slate-500">
-        <span className="inline-block h-3 w-6 rounded" style={{ background: 'rgba(244,114,95,0.8)' }} /> negative
-        <span className="inline-block h-3 w-6 rounded" style={{ background: 'rgba(90,140,255,0.8)' }} /> positive
+      <div className="mt-3 flex items-center gap-4 text-[11px] text-subtle">
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-3 w-6 rounded" style={{ background: corrColor(-0.9) }} /> negative
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-3 w-6 rounded" style={{ background: corrColor(0.9) }} /> positive
+        </span>
       </div>
     </ChartCard>
   );
@@ -313,8 +313,8 @@ export default function Charts({
       {numericCols.length > 0 ? (
         <HistogramChart id={id} numericCols={numericCols} />
       ) : (
-        <ChartCard title="Distribution">
-          <EmptyState title="No numeric columns" />
+        <ChartCard title="Distribution" icon="chart">
+          <EmptyState title="No numeric columns" icon="chart" />
         </ChartCard>
       )}
       <CategoryBarChart id={id} catCols={catCols} />

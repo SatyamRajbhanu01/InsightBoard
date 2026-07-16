@@ -77,26 +77,99 @@ export interface ScatterData {
   points: { x: number | null; y: number | null }[];
 }
 
+export interface Readiness {
+  status: 'ready' | 'degraded';
+  service: string;
+  datasets: number;
+}
+
+export interface FieldError {
+  field: string;
+  message: string;
+}
+
+/**
+ * Rich error type that understands the backend's RFC-7807 Problem Details
+ * bodies while remaining backward compatible with the old `{error}` shape.
+ */
+export class ApiError extends Error {
+  status: number;
+  title?: string;
+  detail?: string;
+  requestId?: string;
+  fieldErrors: FieldError[];
+  notFound: boolean;
+
+  constructor(init: {
+    message: string;
+    status: number;
+    title?: string;
+    detail?: string;
+    requestId?: string;
+    fieldErrors?: FieldError[];
+  }) {
+    super(init.message);
+    this.name = 'ApiError';
+    this.status = init.status;
+    this.title = init.title;
+    this.detail = init.detail;
+    this.requestId = init.requestId;
+    this.fieldErrors = init.fieldErrors ?? [];
+    this.notFound = init.status === 404;
+  }
+}
+
 async function handle<T>(resp: Response): Promise<T> {
   if (!resp.ok) {
-    let msg = `Request failed (${resp.status})`;
+    const requestId = resp.headers.get('X-Request-ID') ?? undefined;
+    let message = `Request failed (${resp.status})`;
+    let title: string | undefined;
+    let detail: string | undefined;
+    let fieldErrors: FieldError[] = [];
     try {
       const body = await resp.json();
-      msg = body.error || body.detail || msg;
+      // Problem Details (application/problem+json) OR legacy flat {error}.
+      detail = body.detail || body.error || undefined;
+      title = body.title || undefined;
+      message = detail || title || message;
+      if (Array.isArray(body.errors)) {
+        fieldErrors = body.errors
+          .filter((e: unknown): e is FieldError => !!e && typeof e === 'object')
+          .map((e: { field?: string; message?: string }) => ({
+            field: String(e.field ?? ''),
+            message: String(e.message ?? ''),
+          }));
+      }
     } catch {
-      /* ignore */
+      /* non-JSON error body — keep the generic message */
     }
-    throw new Error(msg);
+    throw new ApiError({ message, status: resp.status, title, detail, requestId, fieldErrors });
   }
   return resp.json() as Promise<T>;
 }
 
+export interface ListDatasetsParams {
+  source?: 'sample' | 'upload';
+  sort_by?: 'name' | 'rows' | 'columns' | 'source' | 'id';
+  sort_dir?: 'asc' | 'desc';
+}
+
 export const api = {
-  async health(): Promise<{ status: string }> {
+  async health(): Promise<{ status: string; service?: string }> {
     return handle(await fetch('/api/health'));
   },
-  async listDatasets(): Promise<DatasetMeta[]> {
-    const body = await handle<{ datasets: DatasetMeta[] }>(await fetch('/api/datasets'));
+  async ready(): Promise<Readiness> {
+    return handle(await fetch('/api/ready'));
+  },
+  async listDatasets(params: ListDatasetsParams = {}): Promise<DatasetMeta[]> {
+    const qs = new URLSearchParams();
+    if (params.source) qs.set('source', params.source);
+    if (params.sort_by) {
+      qs.set('sort_by', params.sort_by);
+      qs.set('sort_dir', params.sort_dir ?? 'asc');
+    }
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    const body = await handle<{ datasets: DatasetMeta[] }>(await fetch(`/api/datasets${suffix}`));
     return body.datasets;
   },
   async upload(file: File): Promise<DatasetMeta> {
@@ -105,7 +178,7 @@ export const api = {
     return handle(await fetch('/api/upload', { method: 'POST', body: fd }));
   },
   async profile(id: string): Promise<Profile> {
-    return handle(await fetch(`/api/datasets/${id}/profile`));
+    return handle(await fetch(`/api/datasets/${encodeURIComponent(id)}/profile`));
   },
   async rows(
     id: string,
@@ -129,26 +202,26 @@ export const api = {
       qs.set('filter_col', params.filter_col);
       qs.set('filter_value', params.filter_value);
     }
-    return handle(await fetch(`/api/datasets/${id}/rows?${qs.toString()}`));
+    return handle(await fetch(`/api/datasets/${encodeURIComponent(id)}/rows?${qs.toString()}`));
   },
   async histogram(id: string, column: string): Promise<HistogramData> {
     return handle(
-      await fetch(`/api/datasets/${id}/chart?kind=histogram&column=${encodeURIComponent(column)}`)
+      await fetch(`/api/datasets/${encodeURIComponent(id)}/chart?kind=histogram&column=${encodeURIComponent(column)}`)
     );
   },
   async bar(id: string, column: string): Promise<BarData> {
     return handle(
-      await fetch(`/api/datasets/${id}/chart?kind=bar&column=${encodeURIComponent(column)}`)
+      await fetch(`/api/datasets/${encodeURIComponent(id)}/chart?kind=bar&column=${encodeURIComponent(column)}`)
     );
   },
   async scatter(id: string, x: string, y: string): Promise<ScatterData> {
     return handle(
       await fetch(
-        `/api/datasets/${id}/chart?kind=scatter&x=${encodeURIComponent(x)}&y=${encodeURIComponent(y)}`
+        `/api/datasets/${encodeURIComponent(id)}/chart?kind=scatter&x=${encodeURIComponent(x)}&y=${encodeURIComponent(y)}`
       )
     );
   },
   reportUrl(id: string): string {
-    return `/api/datasets/${id}/report`;
+    return `/api/datasets/${encodeURIComponent(id)}/report`;
   },
 };

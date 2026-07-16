@@ -1,20 +1,40 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="InsightBoard — upload a CSV and instantly explore profiles, charts and correlations."
+      content="InsightBoard — a data-analysis workspace. Upload a CSV or pick a sample and instantly explore KPIs, column profiles, distributions and correlations."
     />
+    <meta name="theme-color" content="#080b16" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f7f8fc" media="(prefers-color-scheme: light)" />
+    <meta property="og:title" content="InsightBoard — Instant CSV Analytics" />
+    <meta property="og:description" content="Turn any CSV into a live analytics dashboard: KPIs, profiles, charts and correlations." />
+    <meta property="og:type" content="website" />
+    <!-- Apply the persisted theme before first paint to avoid a flash. -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('ib-theme');
+          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var theme = stored || (prefersDark ? 'dark' : 'light');
+          var root = document.documentElement;
+          root.classList.remove('dark', 'light');
+          root.classList.add(theme);
+        } catch (e) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
-    <title>InsightBoard — CSV Analytics Dashboard</title>
+    <title>InsightBoard — CSV Analytics Workspace</title>
   </head>
   <body>
     <div id="root"></div>

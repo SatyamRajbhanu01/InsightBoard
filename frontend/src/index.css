@@ -2,8 +2,53 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+/* --------------------------------------------------------------------------
+   Theme tokens — semantic colors as RGB triplets (for Tailwind alpha support).
+   Dark is the default (BI dark-first aesthetic); .light overrides.
+   -------------------------------------------------------------------------- */
+:root,
+.dark {
   color-scheme: dark;
+  --c-bg: 8 11 22;
+  --c-surface: 16 20 34;
+  --c-surface-2: 23 29 48;
+  --c-border: 39 47 74;
+  --c-fg: 233 237 247;
+  --c-muted: 148 163 194;
+  --c-subtle: 100 116 145;
+  --app-bg:
+    radial-gradient(1100px 620px at 12% -12%, rgb(49 46 129 / 0.5) 0%, transparent 55%),
+    radial-gradient(900px 520px at 100% 0%, rgb(13 148 136 / 0.16) 0%, transparent 50%),
+    linear-gradient(180deg, #070a16 0%, #05070f 100%);
+  --grid-line: rgb(255 255 255 / 0.06);
+}
+
+.light {
+  color-scheme: light;
+  --c-bg: 246 247 251;
+  --c-surface: 255 255 255;
+  --c-surface-2: 248 250 253;
+  --c-border: 224 229 240;
+  --c-fg: 15 23 42;
+  --c-muted: 71 85 105;
+  --c-subtle: 120 133 156;
+  --app-bg:
+    radial-gradient(1100px 620px at 12% -12%, rgb(99 102 241 / 0.10) 0%, transparent 55%),
+    radial-gradient(900px 520px at 100% 0%, rgb(13 148 136 / 0.08) 0%, transparent 50%),
+    linear-gradient(180deg, #f7f8fc 0%, #eef1f8 100%);
+  --grid-line: rgb(15 23 42 / 0.06);
+}
+
+/* Data-viz palette — constant across themes for consistent series identity. */
+:root {
+  --viz-1: #6366f1;
+  --viz-2: #14b8a6;
+  --viz-3: #f59e0b;
+  --viz-4: #f43f5e;
+  --viz-5: #a855f7;
+  --viz-6: #0ea5e9;
+  --viz-7: #10b981;
+  --viz-8: #eab308;
 }
 
 html,
@@ -14,41 +59,102 @@ body,
 
 body {
   margin: 0;
-  background: radial-gradient(1200px 600px at 15% -10%, #1b2545 0%, #0b1020 45%, #070b16 100%);
-  color: #e8ecf6;
+  background: var(--app-bg);
+  background-attachment: fixed;
+  color: rgb(var(--c-fg));
   font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
+* {
+  border-color: rgb(var(--c-border));
+}
+
+::selection {
+  background: rgb(99 102 241 / 0.35);
+}
+
+/* Scrollbars */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 11px;
+  height: 11px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #26315a;
-  border-radius: 8px;
+  background: rgb(var(--c-border));
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #34427a;
+  background: rgb(var(--c-subtle));
+  background-clip: content-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }
 
 @layer components {
   .card {
-    @apply rounded-2xl border border-white/10 bg-ink-800/60 backdrop-blur shadow-lg shadow-black/20;
+    @apply rounded-2xl border border-line bg-surface/80 backdrop-blur-sm shadow-card;
+  }
+  .card-quiet {
+    @apply rounded-2xl border border-line bg-surface2/60;
   }
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-brand-400/60 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all duration-150
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas
+           disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-primary {
-    @apply btn bg-brand-500 text-white hover:bg-brand-600;
+    @apply btn bg-brand-600 text-white shadow-sm hover:bg-brand-500 active:translate-y-px;
   }
   .btn-ghost {
-    @apply btn border border-white/15 bg-white/5 text-slate-200 hover:bg-white/10;
+    @apply btn border border-line bg-surface2/70 text-fg hover:border-brand-400/50 hover:bg-surface2 active:translate-y-px;
+  }
+  .btn-subtle {
+    @apply btn text-muted hover:bg-surface2 hover:text-fg;
   }
   .chip {
-    @apply inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-xs font-medium text-slate-300;
+    @apply inline-flex items-center gap-1 rounded-full border border-line bg-surface2/70 px-2.5 py-0.5 text-xs font-medium text-muted;
+  }
+  .input {
+    @apply rounded-xl border border-line bg-canvas/60 px-3 py-2 text-sm text-fg placeholder:text-subtle
+           transition focus:border-brand-400 focus:outline-none focus:ring-4 focus:ring-brand-500/10;
+  }
+  .num {
+    @apply font-mono tabular-nums;
+  }
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas;
+  }
+}
+
+@layer utilities {
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background: rgb(var(--c-surface-2));
+  }
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgb(var(--c-fg) / 0.06), transparent);
+    animation: shimmer 1.6s infinite;
+  }
+  .text-gradient {
+    @apply bg-gradient-to-r from-brand-300 via-brand-400 to-teal-300 bg-clip-text text-transparent;
   }
 }
