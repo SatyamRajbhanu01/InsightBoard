@@ -1,0 +1,15 @@
+**/node_modules
+**/dist
+**/build
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+backend/static
+backend/data/*.pkl
+backend/data/index.json
+.git
+.gitignore
+*.md
+!README.md
+.DS_Store

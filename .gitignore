@@ -1,0 +1,34 @@
+# dependencies
+node_modules/
+.venv/
+
+# build output
+dist/
+build/
+target/
+.gradle/
+backend/static/
+
+# runtime data (uploaded datasets)
+backend/data/*.pkl
+backend/data/index.json
+backend/data/index.json.tmp
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# databases
+*.db
+*.sqlite
+
+# env & secrets
+.env
+.env.*
+
+# misc
+.DS_Store
+*.log
+node_modules/.tmp/
+*.tsbuildinfo

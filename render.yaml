@@ -1,0 +1,12 @@
+# Render Blueprint — free Docker web service.
+# Deploy: Render Dashboard → New → Blueprint → connect this repo (or paste its public URL).
+# Render injects $PORT; the Dockerfile binds ${PORT:-7860}, so no port config is needed here.
+services:
+  - type: web
+    name: insightboard
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /api/health
+    autoDeploy: true
