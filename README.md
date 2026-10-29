@@ -56,17 +56,3 @@ npm run dev
 ```
 
 Open **http://localhost:5173** in your browser.
-
-## 📸 Screenshots
-
-_Add screenshots of the dashboard here._
-
-## 🗺️ Roadmap
-
-- [ ] Deploy a live demo
-- [ ] Add dashboard screenshots
-- [ ] Improve analytics and visualization capabilities
-
-## 📄 License
-
-MIT — see the `LICENSE` file for details.
